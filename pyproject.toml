@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "geochips"
+dynamic = ["version"]
+description = "Cut GeoTIFFs and GeoJSON labels into YOLO and COCO training chips."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Ngo Binh" }]
+requires-python = ">=3.10"
+dependencies = ["numpy", "rasterio>=1.3", "shapely>=2.0", "pillow"]
+keywords = ["geotiff", "satellite", "remote-sensing", "yolo", "coco", "object-detection", "segmentation", "dataset", "tiling"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: GIS",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+    "Intended Audience :: Science/Research",
+]
+
+[project.optional-dependencies]
+vector = ["geopandas"]
+test = ["pytest"]
+
+[project.scripts]
+geochips = "geochips.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/ngo-binh0108/geochips"
+Issues = "https://github.com/ngo-binh0108/geochips/issues"
+
+[tool.hatch.version]
+path = "src/geochips/__init__.py"
+
+[tool.ruff]
+line-length = 130
