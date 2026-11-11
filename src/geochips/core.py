@@ -26,6 +26,7 @@ class Label:
 
     cls: str
     geometry: BaseGeometry
+    truncated: bool = False  # the chip border cut part of the object off
 
 
 @dataclass
@@ -159,7 +160,8 @@ def clip_labels(labels: Sequence[Label], tree: STRtree, window: Window, min_visi
         if not polys:
             continue
         g = polys[0] if len(polys) == 1 else MultiPolygon(polys)
-        out.append(Label(lab.cls, affinity.translate(g, -col, -row)))
+        cut = part.area < lab.geometry.area * (1 - 1e-9)
+        out.append(Label(lab.cls, affinity.translate(g, -col, -row), cut))
     return out
 
 
@@ -226,7 +228,7 @@ def make_chips(
 ) -> dict:
     """Cut rasters and labels into a training dataset in `out_dir`.
 
-    `fmt` is "yolo" (boxes), "yolo-seg" (polygons) or "coco". Returns a summary
+    `fmt` is "yolo" (boxes), "yolo-seg" (polygons), "coco" or "voc" (Pascal VOC XML). Returns a summary
     with the number of chips and labels written per split.
     """
     from geochips.writers import Stretch, get_writer, write_preview
