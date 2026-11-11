@@ -12,13 +12,13 @@ from geochips.core import ChipConfig, make_chips
 def parse_args(argv=None) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         prog="geochips",
-        description="Cut GeoTIFFs and vector labels into YOLO or COCO training chips.",
+        description="Cut GeoTIFFs and vector labels into YOLO, COCO or Pascal VOC training chips.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     p.add_argument("rasters", nargs="+", help="GeoTIFF files or directories of them")
     p.add_argument("-l", "--labels", required=True, help="polygon labels (GeoJSON; Shapefile/GeoPackage with geopandas)")
     p.add_argument("-o", "--out", required=True, help="output dataset directory")
-    p.add_argument("-f", "--format", default="yolo", choices=["yolo", "yolo-seg", "coco"], help="label format")
+    p.add_argument("-f", "--format", default="yolo", choices=["yolo", "yolo-seg", "coco", "voc"], help="label format")
     p.add_argument("-s", "--size", type=int, default=512, help="chip size in pixels")
     p.add_argument("--overlap", type=int, default=0, help="overlap between neighbouring chips in pixels")
     p.add_argument("--class-field", default="class", help="label property holding the class name")
