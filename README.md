@@ -3,7 +3,7 @@
 [![tests](https://github.com/ngo-binh0108/geochips/actions/workflows/tests.yml/badge.svg)](https://github.com/ngo-binh0108/geochips/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**Turn a GeoTIFF and a GeoJSON of polygons into a YOLO or COCO training set in one command.**
+**Turn a GeoTIFF and a GeoJSON of polygons into a YOLO, COCO or Pascal VOC training set in one command.**
 
 ```bash
 geochips scene.tif -l buildings.geojson -o dataset -f yolo-seg -s 512 --val 0.2
@@ -19,7 +19,7 @@ different coordinate system from the pixels. geochips handles that step:
 - **Tiles the image** into fixed-size chips with optional overlap. Edge chips are shifted to end on
   the image border, so every chip has the same size and nothing is padded.
 - **Clips polygons** to each chip, splits multipolygons, and drops slivers and mostly-cut objects.
-- **Writes** YOLO boxes, YOLO segmentation, or COCO JSON, plus `data.yaml` for Ultralytics.
+- **Writes** YOLO boxes, YOLO segmentation, COCO JSON or Pascal VOC XML, plus `data.yaml` for Ultralytics.
 - **Converts** 16-bit or float imagery to 8-bit with one percentile stretch per scene, so
   brightness is consistent across chips. Or keep the original values as GeoTIFF chips.
 - **Skips** chips that are mostly nodata, or that have no labels.
@@ -71,6 +71,20 @@ dataset/
 └── images/train/scene_0_0.png  ...
 ```
 
+`-f voc` (Pascal VOC, as read by torchvision's `VOCDetection`, MMDetection and most labelling tools):
+
+```
+dataset/
+├── Annotations/scene_0_0.xml  ...       # one <object> per label: name, truncated, bndbox
+├── ImageSets/Main/train.txt  val.txt   # chip names, one per line
+├── JPEGImages/scene_0_0.png  ...       # named so by VOC whatever the --image-format
+└── labels.txt                          # class names in id order
+```
+
+VOC boxes are whole pixels, 1-based and inclusive: a box over pixel columns 0 to 39 is `xmin` 1, `xmax` 40.
+`truncated` is 1 when the chip border cut part of the object off, which is common with large polygons
+such as land use. `<source><database>` holds the raster the chip came from.
+
 Chips are named `<raster>_<row>_<col>`, the pixel offset of the chip in the source image.
 COCO image entries also record the source raster and window.
 
@@ -78,7 +92,7 @@ COCO image entries also record the source raster and window.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `-f, --format` | `yolo` | `yolo`, `yolo-seg` or `coco` |
+| `-f, --format` | `yolo` | `yolo`, `yolo-seg`, `coco` or `voc` |
 | `-s, --size` | `512` | chip size in pixels |
 | `--overlap` | `0` | overlap between neighbouring chips in pixels |
 | `--class-field` | `class` | label property with the class name (missing → `object`) |
