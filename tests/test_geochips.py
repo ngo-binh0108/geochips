@@ -168,3 +168,53 @@ def test_cli(scene, tmp_path, capsys):
     assert code == 0
     assert "chips" in capsys.readouterr().out
     assert len(list((out / "preview").glob("*.png"))) == 2
+
+
+def read_voc(path):
+    import xml.etree.ElementTree as ET
+
+    root = ET.parse(path).getroot()
+    size = tuple(int(root.find(f"size/{t}").text) for t in ("width", "height", "depth"))
+    objects = [
+        (o.find("name").text, int(o.find("truncated").text), tuple(int(o.find(f"bndbox/{t}").text) for t in ("xmin", "ymin", "xmax", "ymax")))
+        for o in root.iter("object")
+    ]
+    return root.find("filename").text, size, objects
+
+
+def test_voc(scene, tmp_path):
+    raster, labels = scene
+    out = tmp_path / "out"
+    make_chips(raster, labels, out, "voc", ChipConfig(size=512, val_fraction=0.5, seed=1), image_format="jpg")
+    names = {s: (out / "ImageSets" / "Main" / f"{s}.txt").read_text().split() for s in ("train", "val")}
+    assert sorted(names["train"] + names["val"]) == ["scene_0_0", "scene_0_488", "scene_188_0", "scene_188_488"]
+    assert names["train"] and names["val"]
+    assert (out / "labels.txt").read_text().split() == ["building", "field"]
+    for name in names["train"] + names["val"]:
+        assert (out / "JPEGImages" / f"{name}.jpg").exists()
+    filename, size, objects = read_voc(out / "Annotations" / "scene_0_0.xml")
+    assert filename == "scene_0_0.jpg" and size == (512, 512, 3)
+    # "inside" covers pixels 100..139 x 100..119; "edge" is cut at column 512
+    assert objects == [("building", 0, (101, 101, 140, 120)), ("building", 1, (501, 201, 512, 240))]
+    _, _, objects = read_voc(out / "Annotations" / "scene_0_488.xml")
+    assert ("building", 0, (13, 201, 52, 240)) in objects
+
+
+def test_voc_depth_follows_the_saved_image(scene, tmp_path):
+    raster, labels = scene
+    make_chips(raster, labels, tmp_path / "a", "voc", ChipConfig(size=512, bands=[1]))
+    assert read_voc(tmp_path / "a" / "Annotations" / "scene_0_0.xml")[1] == (512, 512, 1)
+    make_chips(raster, labels, tmp_path / "b", "voc", ChipConfig(size=512, bands=[3, 2]), image_format="tif")
+    assert read_voc(tmp_path / "b" / "Annotations" / "scene_0_0.xml")[1] == (512, 512, 2)
+
+
+def test_truncated_flag_marks_objects_cut_by_the_chip():
+    from rasterio.windows import Window
+    from shapely import STRtree
+    from shapely.geometry import box as sbox
+
+    from geochips.core import Label, clip_labels
+
+    labels = [Label("a", sbox(10, 10, 20, 20)), Label("b", sbox(60, 10, 80, 20))]
+    clipped = clip_labels(labels, STRtree([lab.geometry for lab in labels]), Window(0, 0, 64, 64), 0.0, 1.0)
+    assert [(lab.cls, lab.truncated) for lab in clipped] == [("a", False), ("b", True)]
