@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import math
+import xml.etree.ElementTree as ET
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -78,7 +80,7 @@ def save_image(chip: Chip, path: Path, image_format: str) -> None:
 
 
 def get_writer(fmt: str, out_dir: Path, classes: list[str], image_format: str):
-    writers = {"yolo": YoloWriter, "yolo-seg": YoloWriter, "coco": CocoWriter}
+    writers = {"yolo": YoloWriter, "yolo-seg": YoloWriter, "coco": CocoWriter, "voc": VocWriter}
     if fmt not in writers:
         raise ValueError(f"unknown format {fmt!r}; choose from {', '.join(writers)}")
     if image_format not in IMAGE_FORMATS:
@@ -162,6 +164,60 @@ class CocoWriter:
         ann_dir.mkdir(parents=True, exist_ok=True)
         for split, data in self.data.items():
             (ann_dir / f"instances_{split}.json").write_text(json.dumps(data), encoding="utf-8")
+
+
+class VocWriter:
+    """Pascal VOC: JPEGImages/, Annotations/<name>.xml, ImageSets/Main/{split}.txt and labels.txt.
+
+    Boxes are whole pixels, 1-based and inclusive as in VOC itself: a box over pixel columns 0..39 is
+    xmin 1, xmax 40. `truncated` is 1 when the chip border cut part of the object off.
+    """
+
+    def __init__(self, out_dir: Path, classes: list[str], image_format: str, segment: bool = False):
+        self.out, self.classes, self.image_format = out_dir, classes, image_format
+        self.names: dict[str, list[str]] = {}
+
+    def add(self, chip: Chip) -> None:
+        self.names.setdefault(chip.split, []).append(chip.name)
+        file_name = f"{chip.name}.{self.image_format}"
+        save_image(chip, self.out / "JPEGImages" / file_name, self.image_format)
+        bands, h, w = chip.image.shape
+        depth = bands if self.image_format == "tif" else 1 if bands == 1 else 3  # as to_pil() saves it
+
+        root = ET.Element("annotation")
+        ET.SubElement(root, "folder").text = "JPEGImages"
+        ET.SubElement(root, "filename").text = file_name
+        source = ET.SubElement(root, "source")
+        ET.SubElement(source, "database").text = chip.source.name
+        ET.SubElement(source, "annotation").text = "geochips"
+        size = ET.SubElement(root, "size")
+        for tag, value in (("width", w), ("height", h), ("depth", depth)):
+            ET.SubElement(size, tag).text = str(value)
+        ET.SubElement(root, "segmented").text = "0"
+        for lab in chip.labels:
+            x0, y0, x1, y1 = lab.geometry.bounds
+            # reprojection leaves edges like 140.0000001, which must not grow the box by a pixel
+            xmin, ymin = max(1, math.floor(x0 + 1e-3) + 1), max(1, math.floor(y0 + 1e-3) + 1)
+            xmax, ymax = max(xmin, min(w, math.ceil(x1 - 1e-3))), max(ymin, min(h, math.ceil(y1 - 1e-3)))
+            obj = ET.SubElement(root, "object")
+            ET.SubElement(obj, "name").text = lab.cls
+            ET.SubElement(obj, "pose").text = "Unspecified"
+            ET.SubElement(obj, "truncated").text = str(int(lab.truncated))
+            ET.SubElement(obj, "difficult").text = "0"
+            bndbox = ET.SubElement(obj, "bndbox")
+            for tag, value in (("xmin", xmin), ("ymin", ymin), ("xmax", xmax), ("ymax", ymax)):
+                ET.SubElement(bndbox, tag).text = str(value)
+        ET.indent(root)
+        path = self.out / "Annotations" / f"{chip.name}.xml"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        ET.ElementTree(root).write(path, encoding="utf-8", xml_declaration=False)
+
+    def close(self) -> None:
+        sets = self.out / "ImageSets" / "Main"
+        sets.mkdir(parents=True, exist_ok=True)
+        for split, names in self.names.items():
+            (sets / f"{split}.txt").write_text("".join(f"{n}\n" for n in names), encoding="utf-8")
+        (self.out / "labels.txt").write_text("".join(f"{c}\n" for c in self.classes), encoding="utf-8")
 
 
 PALETTE = [(230, 25, 75), (60, 180, 75), (255, 225, 25), (0, 130, 200), (245, 130, 48), (145, 30, 180), (70, 240, 240), (240, 50, 230)]
