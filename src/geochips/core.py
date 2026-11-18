@@ -173,10 +173,28 @@ def _polygons(g: BaseGeometry) -> list[Polygon]:
     return []  # lines or points left over from touching edges
 
 
+def chip_prefixes(rasters: Sequence[Path]) -> list[str]:
+    """The name each raster's chips start with: its file stem, made unique.
+
+    Rasters with the same file name in different folders (a/scene.tif, b/scene.tif) would otherwise
+    write their chips over each other. A clashing stem gets its folder name in front, and a number
+    if that still clashes.
+    """
+    stems = [r.stem for r in rasters]
+    names = [f"{r.parent.name}_{r.stem}" if stems.count(r.stem) > 1 else r.stem for r in rasters]
+    seen: dict[str, int] = {}
+    out = []
+    for name in names:
+        seen[name] = seen.get(name, 0) + 1
+        out.append(name if names.count(name) == 1 else f"{name}_{seen[name]}")
+    return out
+
+
 def iter_chips(rasters: Sequence[str | Path], labels: Sequence[Label], label_crs: CRS, config: ChipConfig) -> Iterator[Chip]:
     """Yield chips with their clipped labels for every raster."""
     rng = random.Random(config.seed)
     rasters = [Path(r) for r in rasters]
+    prefixes = chip_prefixes(rasters)
     val_images = set(_pick_val(len(rasters), config.val_fraction, rng)) if config.split_by == "image" else set()
     for i, raster in enumerate(rasters):
         with rasterio.open(raster) as src:
@@ -198,7 +216,7 @@ def iter_chips(rasters: Sequence[str | Path], labels: Sequence[Label], label_crs
                     continue
                 split = "val" if j in val_windows else "train"
                 yield Chip(
-                    name=f"{raster.stem}_{int(win.row_off)}_{int(win.col_off)}",
+                    name=f"{prefixes[i]}_{int(win.row_off)}_{int(win.col_off)}",
                     source=raster,
                     window=win,
                     image=src.read(bands, window=win),

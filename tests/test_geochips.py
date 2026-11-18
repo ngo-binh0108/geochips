@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -159,6 +160,24 @@ def test_float_raster_with_nan_fill_is_stretched(tmp_path):
     chip = stretch(data)
     assert chip[0, 0, :32].max() > 200  # the valid half is stretched, not black
     assert (chip[0, :, 32:] == 0).all()  # NaN pixels are black
+
+
+def test_rasters_with_the_same_file_name_do_not_overwrite_each_other(scene, tmp_path):
+    from geochips.core import chip_prefixes
+
+    raster, labels = scene
+    copies = []
+    for folder in ("a", "b"):
+        (tmp_path / folder).mkdir()
+        copies.append(tmp_path / folder / "scene.tif")
+        copies[-1].write_bytes(raster.read_bytes())
+    out = tmp_path / "out"
+    stats = make_chips(copies, labels, out, "yolo", ChipConfig(size=512, val_fraction=0))
+    written = list((out / "images" / "train").glob("*.png"))
+    assert len(written) == stats["chips"]["train"] == 8  # 4 chips from each copy
+    assert {p.name.split("_")[0] for p in written} == {"a", "b"}
+    assert chip_prefixes([Path("x/s.tif"), Path("y/t.tif")]) == ["s", "t"]  # unique names are unchanged
+    assert chip_prefixes([Path("x/s.tif"), Path("x/s.TIF")]) == ["x_s_1", "x_s_2"]
 
 
 def test_tif_chips_keep_georeferencing(scene, tmp_path):
