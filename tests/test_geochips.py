@@ -180,6 +180,16 @@ def test_rasters_with_the_same_file_name_do_not_overwrite_each_other(scene, tmp_
     assert chip_prefixes([Path("x/s.tif"), Path("x/s.TIF")]) == ["x_s_1", "x_s_2"]
 
 
+def test_skip_empty_judges_chips_by_the_kept_classes(scene, tmp_path):
+    raster, labels = scene
+    config = ChipConfig(size=512, val_fraction=0, skip_empty=True, classes=["field"])
+    stats = make_chips(raster, labels, tmp_path / "out", "yolo", config)
+    # chips with only buildings count as empty once buildings are filtered out
+    labels_dir = tmp_path / "out" / "labels" / "train"
+    assert stats["chips"]["train"] == len(list(labels_dir.glob("*.txt"))) > 0
+    assert all(f.read_text().strip() for f in labels_dir.glob("*.txt"))
+
+
 def test_tif_chips_keep_georeferencing(scene, tmp_path):
     raster, labels = scene
     make_chips(raster, labels, tmp_path / "out", "yolo", ChipConfig(size=512, bands=[3, 2]), image_format="tif")
