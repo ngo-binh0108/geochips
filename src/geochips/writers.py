@@ -39,6 +39,7 @@ class Stretch:
         lows, highs = [], []
         for band in data:
             values = band.compressed()
+            values = values[np.isfinite(values)]  # NaN fill without a nodata tag would make every percentile NaN
             lo, hi = np.percentile(values, percentiles) if values.size else (0.0, 1.0)
             lows.append(lo)
             highs.append(hi if hi > lo else lo + 1)
@@ -48,6 +49,7 @@ class Stretch:
         if self.lows is None:
             return image
         scaled = (image.astype("float64") - self.lows[:, None, None]) / (self.highs - self.lows)[:, None, None]
+        scaled = np.nan_to_num(scaled, nan=0.0)  # NaN pixels become black instead of undefined bytes
         return (np.clip(scaled, 0, 1) * 255).round().astype("uint8")
 
 

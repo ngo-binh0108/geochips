@@ -145,6 +145,22 @@ def test_uint16_is_stretched_to_uint8_png(scene, tmp_path):
     assert img[..., 0].min() == 0 and img[..., 0].max() > 100
 
 
+def test_float_raster_with_nan_fill_is_stretched(tmp_path):
+    from geochips.writers import Stretch
+
+    raster = tmp_path / "float.tif"
+    data = np.tile(np.linspace(0.0, 1.0, 64, dtype="float32"), (1, 64, 1))
+    data[:, :, 32:] = np.nan  # NaN fill, and no nodata tag
+    with rasterio.open(raster, "w", driver="GTiff", width=64, height=64, count=1, dtype="float32",
+                       crs=CRS, transform=TRANSFORM) as dst:
+        dst.write(data)
+    stretch = Stretch.from_raster(raster)
+    assert np.isfinite(stretch.lows).all() and np.isfinite(stretch.highs).all()
+    chip = stretch(data)
+    assert chip[0, 0, :32].max() > 200  # the valid half is stretched, not black
+    assert (chip[0, :, 32:] == 0).all()  # NaN pixels are black
+
+
 def test_tif_chips_keep_georeferencing(scene, tmp_path):
     raster, labels = scene
     make_chips(raster, labels, tmp_path / "out", "yolo", ChipConfig(size=512, bands=[3, 2]), image_format="tif")
