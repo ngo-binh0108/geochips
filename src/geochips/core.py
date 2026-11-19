@@ -255,6 +255,8 @@ def make_chips(
     rasters = expand_rasters(rasters)
     all_labels, label_crs = load_labels(labels, config.class_field)
     classes = config.classes or sorted({lab.cls for lab in all_labels})
+    # Drop other classes before cutting, so skip_empty judges a chip by the classes being kept
+    all_labels = [lab for lab in all_labels if lab.cls in classes]
     writer = get_writer(fmt, Path(out_dir), classes, image_format)
 
     stats: dict = {"chips": {"train": 0, "val": 0}, "labels": {"train": 0, "val": 0}, "classes": classes}
